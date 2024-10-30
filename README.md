@@ -1,4 +1,3 @@
-.# SpecAI
 SpecAI is a pacakge for spectroscopy simulation and chemical applications backed up by the AI technology. It is planned to cover almost all established spectroscopy techniques with broad ranges of chemical applications, which include but not limit to
 - Vibrational spectroscopy
   - Infrared (IR) absorption
