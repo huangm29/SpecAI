@@ -36,3 +36,8 @@ Some of the common spectroscopy signals, such as the IR and UV-vis absorption, c
 Wheels will not be re-invented in SpecAI. SpecAI calls an external quantum chemistry program (QCEngine) to determine the spectroscopy signal if they are avaialbe in the QCEngine. Multiple popular open-source or free quantum chemistry packages are in the radar of SpecAI, such as ORCA, Psi4 and NWChem. If the target spectroscopy signal is not available in any supported QCEngine, SpecAI would try to obtain the necessary quantities in order to simulate the signal, for example, molecular orbitals, quantum chemistry integrals, excited state energies, etc. With those necessary quantities, SpecAI would run the spectroscopy simulation with its modules. In this way, SpecAI is expected to cover as many spectroscopy signals as possible.
 
 SpecAI is a Python package which can call QCEngines and postprocess their results. QCEngine calcualtions could be submitted to either a local machine or a queue system on some external HPC system. Calculation results should be retrieved and data should be extracted and stored in formats facilitating future use in machine learning modeling. The simulated spectroscopy signals can be transformed and plotted with the Python packages Numpy and Matplotlib.
+
+SpecAI can be used as 
+1) a tool to generate big spectroscopy data for molecules, and calculate spectroscopic descriptors in ML models for predicting molecular properties;
+2) a program to simulate advanced spectroscopy signals not available in standard quantum chemistry pacakges;
+3) a user-friendly wrapper of standard quantum chemistry packages to simulate common spectroscopy signals and spectroscopy data postprocesser.
