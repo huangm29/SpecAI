@@ -48,7 +48,11 @@ Currently there are other software packages such as [Atomic Simulation Environme
 
 ## Structure of SpecAI
 
-As show in the diagram below, there are four main componets of SpecAI by design:
+As show in the diagram below, 
+![SpecAI_struc.png](./SupFiles/SpecAI_struc.png) 
+*The structure of SpecAI*
+
+there are four main componets of SpecAI by design:
 
 1) Data manager. This module handles data collection, transformation, visualization and archiving. It has three submodules:
    1. Data archiver. This submodule receives data from other modules. After some format processing, it sends the data to some external device, for example, Network Attached Storage (NAS) device, for storage and future reference.
