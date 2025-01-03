@@ -55,7 +55,7 @@ As show in the diagram below,
 there are four main componets of SpecAI by design:
 
 1) Data manager. This module handles data collection, transformation, visualization and archiving. It has three submodules:
-   1. Data archiver. This submodule receives data from other modules. After some format processing, it sends the data to some external device, for example, Network Attached Storage (NAS) device, for storage and future reference.
+   1. Data archiver/retriever. This submodule receives data from other modules. After some format processing, it sends the data to some external device, for example, Network Attached Storage (NAS) device, for storage and future reference. It also provides an API to retrieve the data wanted.
    2. Molecular data preparer. This submodule extract molecular data (chemical constitution, geometry, property, etc) from external resources and reform the data according to the requirements of quantum chemistry calculation. It also sends the well-prepared molecular data to the archiver module for storage.
    3. Spectrum visualizer. This submodule receive spectroscopy simulation results from quantum chemistry calculations and visualize them for human's reference. It also send all the generated specta to data archiver.
 2) Job runner. This module takes in charge of quantum chemistry calculation job setup, submission, monitoring and final report. It has three submodules as the following:
