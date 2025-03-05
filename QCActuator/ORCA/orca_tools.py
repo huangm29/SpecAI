@@ -116,7 +116,6 @@ class OrcaNotebookCalculator:
             
         return input_str
 
-
     def run_calculation(self, 
                        input_content: Union[str, OrcaInput], 
                        keep_files: Optional[bool] = None) -> Tuple[Path, Path]:
