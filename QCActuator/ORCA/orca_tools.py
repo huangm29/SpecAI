@@ -158,15 +158,15 @@ class OrcaNotebookCalculator:
         subprocess.run([
             self.orca_mapspc,
             str(output_file),
-            f"-{type}",
+            f"{type}",
             f"-{unit}",
             f"-x0{start_point}",
             f"-x1{end_point}",
             f"-w{conv_width}"
         ], check=True)
-        
-        stk_file = output_file.with_suffix('.out.abs.stk')
-        dat_file = output_file.with_suffix('.out.abs.dat')
+
+        stk_file = output_file.with_suffix('.out.ABS.stk')
+        dat_file = output_file.with_suffix('.out.ABS.dat')
         
         # Load data into memory
         stk_data = np.loadtxt(stk_file)
