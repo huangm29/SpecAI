@@ -3,6 +3,7 @@ import os
 import sys
 from scipy import special
 import matplotlib.pyplot as plt
+import numpy as np
 
 ###########################################################
 # Note: Plot multiple spetra with different modes and
@@ -188,95 +189,9 @@ def ConvPlot_UVvis(gamma, PlotTitle, PlotLabel, profile=1, normalized=0,
             print("Wrong SaveFileType!")
             sys.exit(1)
 
-def ConvPlot_UVvis(gamma, PlotTitle, PlotLabel, profile=1, normalized=0,
-                   EShift=0.0, nsets=1,
-                   PlotType=1, WithSticks=1, EnergyMargin=0.1,
-                   ExptDataFile="", DataFileName="simu_data.dat", NoPoints=1000,
-                   XLabel="Energy (nm)", YLabel="Oscillation Strength (a. u.)",
-                   SaveFile=False, SaveFileType=2, SaveFileName="plot", ScaleStick=1.0):
-
-    # Read the data file: energy vs. oscillation strength
-    data = genfromtxt(DataFileName, dtype='float')
-
-    dim = len(data[:, 0])
-    Emin = amin(data[:, 0])
-    Emax = amax(data[:, 0])
-
-# Build a 1D grid for plotting
-    Estep = (Emax - Emin + 2.0*EnergyMargin)/NoPoints
-    Egrid = arange(Emin-EnergyMargin, Emax+EnergyMargin, Estep)
-
-# Creat a list of zeros
-    z = zeros(len(Egrid))
-    if profile == 4:
-        z1 = zeros(len(Egrid))
-        z2 = zeros(len(Egrid))
-        z3 = zeros(len(Egrid))
-
-# Sum on the grid
-    for i in range(dim):
-        if profile == 1:
-            z = z + data[i, 1]*1.0/pi*gamma/2.0 / \
-                ((Egrid-data[i, 0])**2+gamma*gamma/4.0)
-        elif profile == 2:
-            sigma = gamma/(2.0*sqrt(2.0*log(2.0)))
-            z = z + data[i, 1]*exp(-0.5*((Egrid-data[i, 0])/sigma)
-                               ** 2)/(sigma*sqrt(2.0*pi))
-        elif profile == 3:
-            zz = (Egrid-data[i, 0]+1j*gamma/2.0)/(sigma*sqrt(2.0))
-#		wz = exp(-1.0*zz*zz)*special.erfc(-1j*zz)
-# wofz: the SciPy implementation of the Faddeeva function
-            z = z + data[i, 1]*special.wofz(zz).real/(sigma*sqrt(2.0*pi))
-        elif profile == 4:
-            z1 = z1 + data[i, 1]*1.0/pi*gamma/2.0 / \
-                ((Egrid-data[i, 0])**2+gamma*gamma/4.0)
-            z2 = z2 + \
-                data[i, 1]*exp(-0.5*((Egrid-data[i, 0])/sigma)
-                               ** 2)/(sigma*sqrt(2.0*pi))
-            zz = (Egrid-data[i, 0]+1j*gamma/2.0)/(sigma*sqrt(2.0))
-#                wz = exp(-1.0*zz*zz)*special.erfc(-1j*zz)
-            z3 = z3 + data[i, 1]*special.wofz(zz).real/(sigma*sqrt(2.0*pi))
-        else:
-            print("Wrong lineshape option!")
-            sys.exit(1)
-
-    fig, ax1 = plt.subplots()
-    if profile != 4:
-        plt.plot(Egrid, z, label=PlotLabel)
-    else:
-        plt.plot(Egrid, z1, label="Lorentzian")
-        plt.plot(Egrid, z2, label="Gaussian")
-        plt.plot(Egrid, z3, label="Voigt")
-
-# No sticks if overlapped plots
-    if (nsets > 1) and (PlotType == 1):
-        WithSticks = 0
-
-    if WithSticks:
-        plt.vlines(data[:, 0], [0], ScaleStick*data[:, 1], colors='black')
-
-    plt.legend()
-    plt.xlabel(XLabel)
-    plt.ylabel(YLabel)
-    plt.title(PlotTitle)
-    ax1.xaxis.set_tick_params(direction='in', top='on', which='both')
-    ax1.yaxis.set_tick_params(direction='in', top='on', which='both')
-    plt.show()
-
-    if SaveFile:
-        if SaveFileType == 1:
-            plt.savefig(SaveFileName+'.svg')
-        elif SaveFileType == 2:
-            plt.savefig(SaveFileName+'.pdf')
-        elif SaveFileType == 3:
-            plt.savefig(SaveFileName+'.png')
-        else:
-            print("Wrong SaveFileType!")
-            sys.exit(1)
-
 ##################################################################################################
 # General plot function for multiple simulation data sets with expt. data.
-# SpecType: number; type of spectra; 1: XAS; 2: UV-vis; 3: Vibrational (IR and Raman)
+# SpecType: number; type of spectra; 1: XAS; 2: UV-vis; 3: Vibrational (IR and Raman); 4: NMR
 # gamma: list of broadening factors (numbers) for multiple curves; len = no. of simulation curves
 #        = l0
 # PlotTitle: string; title of the plot
@@ -307,7 +222,7 @@ def ConvPlot(SpecType, gamma, PlotTitle, PlotLabel=[""], profile=1, normalized=0
                  XLabel="", YLabel="Oscillation Strength (arbitary unit)",
                  SaveFile=False, SaveFileType=2, SaveFileName="plot", ScaleStick=1.0,
                  ScaleExpt = 1.0, ScaleCurves=[1.0], VShifts=[0.0]):
-
+    
     # how many curves we want to plot?
     l0 = len(DataFileNames)
     
@@ -328,6 +243,9 @@ def ConvPlot(SpecType, gamma, PlotTitle, PlotLabel=[""], profile=1, normalized=0
             XLabel = "Energy (nm)"
         elif SpecType == 3:
             XLabel="Energy (cm^-1)"
+        elif SpecType == 4:
+            XLabel="Chemical Shift (ppm)"
+            YLabel="Intensity"
         else:
             print("Wrong SpecType!")
             sys.exit(1)
@@ -347,11 +265,15 @@ def ConvPlot(SpecType, gamma, PlotTitle, PlotLabel=[""], profile=1, normalized=0
                       
     # Read the data files: energy vs. oscillation strength
     data = []
-    
+
     for i in range(l0):
         data.append(genfromtxt(DataFileNames[i], dtype='float'))
+
+    if SpecType == 4: 
+        data = np.array(data)
+
+    fig, ax1 = plt.subplots()
     
-    fig, ax1 = plt.subplots()    
     for j in range(l0):
         dim = len(data[j][:, 0])
         Emin = amin(data[j][:, 0])
@@ -367,40 +289,41 @@ def ConvPlot(SpecType, gamma, PlotTitle, PlotLabel=[""], profile=1, normalized=0
             z1 = zeros(len(Egrid))
             z2 = zeros(len(Egrid))
             z3 = zeros(len(Egrid))
-    
-    # Sum on the grid
-        for i in range(dim):
-            if profile == 1:
-                z = z + data[j][i, 1]*1.0/pi*gamma/2.0 / \
+
+        if SpecType != 4:           
+        # Sum on the grid
+            for i in range(dim):
+                if profile == 1:
+                   z = z + data[j][i, 1]*1.0/pi*gamma/2.0 / \
                     ((Egrid-data[j][i, 0])**2+gamma*gamma/4.0)
-            elif profile == 2:
-                sigma = gamma/(2.0*sqrt(2.0*log(2.0)))
-                z = z + data[j][i, 1]*exp(-0.5*((Egrid-data[j][i, 0])/sigma)
+                elif profile == 2:
+                   sigma = gamma/(2.0*sqrt(2.0*log(2.0)))
+                   z = z + data[j][i, 1]*exp(-0.5*((Egrid-data[j][i, 0])/sigma)
                                    ** 2)/(sigma*sqrt(2.0*pi))
-            elif profile == 3:
-                zz = (Egrid-data[j][i, 0]+1j*gamma/2.0)/(sigma*sqrt(2.0))
-    #		wz = exp(-1.0*zz*zz)*special.erfc(-1j*zz)
-    # wofz: the SciPy implementation of the Faddeeva function
-                z = z + data[j][i, 1]*special.wofz(zz).real/(sigma*sqrt(2.0*pi))
-            elif profile == 4:
-                z1 = z1 + data[j][i, 1]*1.0/pi*gamma/2.0 / \
+                elif profile == 3:
+                   zz = (Egrid-data[j][i, 0]+1j*gamma/2.0)/(sigma*sqrt(2.0))
+        #		wz = exp(-1.0*zz*zz)*special.erfc(-1j*zz)
+        # wofz: the SciPy implementation of the Faddeeva function
+                   z = z + data[j][i, 1]*special.wofz(zz).real/(sigma*sqrt(2.0*pi))
+                elif profile == 4:
+                   z1 = z1 + data[j][i, 1]*1.0/pi*gamma/2.0 / \
                     ((Egrid-data[j][i, 0])**2+gamma*gamma/4.0)
-                z2 = z2 + \
+                   z2 = z2 + \
                     data[j][i, 1]*exp(-0.5*((Egrid-data[j][i, 0])/sigma)
                                    ** 2)/(sigma*sqrt(2.0*pi))
-                zz = (Egrid-data[j][i, 0]+1j*gamma/2.0)/(sigma*sqrt(2.0))
-    #                wz = exp(-1.0*zz*zz)*special.erfc(-1j*zz)
-                z3 = z3 + data[j][i, 1]*special.wofz(zz).real/(sigma*sqrt(2.0*pi))
-            else:
-                print("Wrong lineshape option!")
-                sys.exit(1)
+                   zz = (Egrid-data[j][i, 0]+1j*gamma/2.0)/(sigma*sqrt(2.0))
+        #                wz = exp(-1.0*zz*zz)*special.erfc(-1j*zz)
+                   z3 = z3 + data[j][i, 1]*special.wofz(zz).real/(sigma*sqrt(2.0*pi))
+                else:
+                   print("Wrong lineshape option!")
+                   sys.exit(1)
     
-        if profile != 4:
-            plt.plot(Egrid, ScaleCurves[j] * z + VShifts[j], label=PlotLabel[j])
-        else:
-            plt.plot(Egrid, ScaleCurves[j] * z1 + VShifts[j], label="Lorentzian_"+str(j+1))
-            plt.plot(Egrid, ScaleCurves[j] * z2 + VShifts[j], label="Gaussian_"+str(j+1))
-            plt.plot(Egrid, ScaleCurves[j] * z3 + VShifts[j], label="Voigt_"+str(j+1))
+            if profile != 4:
+                plt.plot(Egrid, ScaleCurves[j] * z + VShifts[j], label=PlotLabel[j])
+            else:
+                plt.plot(Egrid, ScaleCurves[j] * z1 + VShifts[j], label="Lorentzian_"+str(j+1))
+                plt.plot(Egrid, ScaleCurves[j] * z2 + VShifts[j], label="Gaussian_"+str(j+1))
+                plt.plot(Egrid, ScaleCurves[j] * z3 + VShifts[j], label="Voigt_"+str(j+1))
     
     if ExptDataFile != "":
         data_expt = genfromtxt(ExptDataFile, dtype='float')
@@ -409,7 +332,10 @@ def ConvPlot(SpecType, gamma, PlotTitle, PlotLabel=[""], profile=1, normalized=0
 
 # No sticks for multiple curve plots
     if l0 == 1:
-        plt.vlines(data[:, 0], [0], ScaleStick*data[:, 1], colors='black')
+        plt.vlines(data[0][:, 0], [0], ScaleStick*data[0][:, 1], colors='black')
+
+    if SpecType == 4:
+        plt.gca().invert_xaxis()
 
     plt.legend()
     plt.xlabel(XLabel)
