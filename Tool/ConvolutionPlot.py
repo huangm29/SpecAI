@@ -337,7 +337,8 @@ def ConvPlot(SpecType, gamma, PlotTitle, PlotLabel=[""], profile=1, normalized=0
     if SpecType == 4:
         plt.gca().invert_xaxis()
 
-    plt.legend()
+    if SpecType != 4:
+        plt.legend()
     plt.xlabel(XLabel)
     plt.ylabel(YLabel)
     plt.title(PlotTitle)
