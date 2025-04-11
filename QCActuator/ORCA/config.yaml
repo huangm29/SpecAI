@@ -1,0 +1,95 @@
+# ORCA Calculator Configuration
+
+# System settings
+system:
+  orca_path: "/home/huangm/source/orca_6_0_1_linux_x86-64_shared_openmpi416/"  # ORCA executable path
+  work_dir: null  # Working directory
+  verbose: false  # Verbose output flag
+
+# Calculation parameters
+parameters:
+  - name: xc
+    value: "B3LYP"
+    description: "Exchange-correlation functional"
+    is_required: true
+    
+  - name: basis
+    value: "6-31G*"
+    description: "Basis set"
+    is_required: true
+    
+  - name: nroot
+    value: 3
+    description: "Number of roots for TDDFT"
+    is_required: false
+    
+  - name: charge
+    value: 0
+    description: "Molecular charge"
+    is_required: true
+    
+  - name: multiplicity
+    value: 1
+    description: "Spin multiplicity"
+    is_required: true
+    
+  - name: memory
+    value: 4000
+    description: "Memory per core in MB"
+    is_required: false
+    
+  - name: nprocs
+    value: 1
+    description: "Number of processors"
+    is_required: false
+    
+  - name: solvent
+    value: null
+    description: "Solvent name for CPCM model"
+    is_required: false
+    
+  - name: extra_keywords
+    value: null
+    description: "Extra ORCA keywords"
+    is_required: false
+    
+  - name: core_orb
+    value: 0
+    description: "Core orbital for XAS calculations"
+    is_required: false
+    
+  - name: efei
+    value: false
+    description: "Enable EFEI calculation"
+    is_required: false
+    
+  - name: efei_strength
+    value: null
+    description: "EFEI field strength"
+    is_required: false
+    
+  - name: efei_atoms
+    value: null
+    description: "Tuple of atom indices for EFEI"
+    is_required: false
+
+# Required software dependencies
+requirements:
+  - name: numpy
+    version: ">=1.20.0"
+    
+  - name: matplotlib
+    version: ">=3.3.0"
+    
+  - name: pyyaml
+    version: ">=5.1"
+
+# Required data files
+data_requirements:
+  - name: geometry.xyz
+    description: "Molecular geometry file"
+    is_required: true
+    
+  - name: reference.xyz
+    description: "Reference geometry for comparison"
+    is_required: false

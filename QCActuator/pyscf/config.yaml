@@ -1,0 +1,5 @@
+basis: '6-31g*'
+xc_functional: 'b3lyp'
+n_states: 3
+verbose: 3
+max_memory: 4000  # MB

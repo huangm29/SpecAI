@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
+import yaml
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Union, List
 import numpy as np
@@ -29,71 +30,131 @@ class SpectroscopyType(Enum):
         self.default_unit = default_unit
 
 
-@dataclass
-class OrcaConfig:
-    """Configuration settings for ORCA calculator"""
-    work_dir: Optional[str] = None  # Working directory (None = use temp dir)
-    verbose: bool = False  # Print additional information during calculations
-
-
-@dataclass
-class OrcaInput:
-    """Data class for ORCA input parameters"""
-    xc: str = "B3LYP"
-    basis: str = "6-31G*"
-    nroot: int = 3
-    charge: int = 0
-    multiplicity: int = 1
-    geometry: str = ""
-    extra_keywords: str = ""
-    solvent: Optional[str] = None
-    core_orb: Optional[int] = 0
-    memory: Optional[int] = None
-    nprocs: Optional[int] = None
-    # EFEI calculation parameters
-    efei: bool = False
-    efei_strength: Optional[float] = None
-    efei_atoms: Optional[Tuple[int, int]] = None
-
-
 class OrcaCalculator:
     def __init__(
             self,
-            orca_path: str = "/usr/bin/orca",
-            config: Optional[OrcaConfig] = None):
-        self.orca_path = Path(orca_path)
+            config_file: Optional[str] = None,
+            orca_path: Optional[str] = None,
+            verbose: Optional[bool] = None):
+        """
+        Initialize the ORCA calculator with configuration from a YAML file
+
+        Args:
+            config_file: Path to YAML configuration file (optional)
+            orca_path: Path to ORCA executable (overrides config file)
+            verbose: Verbose output flag (overrides config file)
+        """
+        # Default configuration
+        self.config = {
+            'orca_path': '/usr/bin/orca',
+            'work_dir': None,  # None = use temp dir
+            'verbose': False,
+            'default_parameters': {
+                'xc': 'B3LYP',
+                'basis': '6-31G*',
+                'nroot': 3,
+                'charge': 0,
+                'multiplicity': 1,
+                'extra_keywords': '',
+                'solvent': None,
+                'core_orb': 0,
+                'memory': None,
+                'nprocs': None,
+                'efei': False,
+                'efei_strength': None,
+                'efei_atoms': None
+            }
+        }
+
+        # Load configuration from YAML file if provided
+        if config_file:
+            self._load_config(config_file)
+
+        # Override with explicit parameters if provided
+        if orca_path:
+            self.config['orca_path'] = orca_path
+        if verbose is not None:
+            self.config['verbose'] = verbose
+
+        # Set up paths
+        self.orca_path = Path(self.config['orca_path'])
 
         # Check if orca_path is a directory or the actual executable
         if self.orca_path.is_dir():
             self.orca_exec = str(self.orca_path / "orca")
             self.orca_mapspc = str(self.orca_path / "orca_mapspc")
-            self.orca_nmrspec = str(
-                self.orca_path / "orca_nmrspectrum")
+            self.orca_nmrspec = str(self.orca_path / "orca_nmrspectrum")
         else:
             # If orca_path points directly to the executable
             self.orca_exec = str(self.orca_path)
             # Assume other tools are in the same directory
             self.orca_mapspc = str(self.orca_path.parent / "orca_mapspc")
-            self.orca_nmrspec = str(
-                self.orca_path.parent / "orca_nmrspectrum")
+            self.orca_nmrspec = str(self.orca_path.parent / "orca_nmrspectrum")
 
-        self.config = config or OrcaConfig()
         self._working_dir = None
         self._spectrum_data = None
         self._has_generated_spectrum = False
         self._nmr_data = None  # Store NMR-specific data
 
         # Only print during initialization
-        if self.config.verbose:
+        if self.config['verbose']:
             print(f"Initialized with ORCA executable: {self.orca_exec}")
             print(f"ORCA mapspc tool: {self.orca_mapspc}")
             print(f"ORCA nmrspec tool: {self.orca_nmrspec}")
 
+    def _load_config(self, config_file: str) -> None:
+        """
+        Load configuration from a YAML file and merge with defaults
+
+        Args:
+            config_file: Path to YAML configuration file
+        """
+        try:
+            with open(config_file, 'r') as f:
+                yaml_config = yaml.safe_load(f)
+
+            if yaml_config:
+                # Update system settings if present
+                if 'system' in yaml_config:
+                    for key in ['orca_path', 'work_dir', 'verbose']:
+                        if key in yaml_config['system']:
+                            self.config[key] = yaml_config['system'][key]
+
+                # Update parameters if present
+                if 'parameters' in yaml_config:
+                    # Convert the list of parameter dictionaries to a single dictionary
+                    param_dict = {}
+                    for param in yaml_config['parameters']:
+                        if 'name' in param and 'value' in param:
+                            param_dict[param['name']] = param['value']
+
+                    # Update default parameters
+                    self.config['default_parameters'].update(param_dict)
+
+                # Check software requirements
+                if 'requirements' in yaml_config and self.config['verbose']:
+                    print("Checking software requirements...")
+                    for req in yaml_config['requirements']:
+                        print(
+                            f"  - {req['name']}: {req.get('version', 'any version')}")
+
+                # Check data requirements
+                if 'data_requirements' in yaml_config and self.config['verbose']:
+                    print("Data requirements:")
+                    for data_req in yaml_config['data_requirements']:
+                        req_status = "Required" if data_req.get(
+                            'is_required', False) else "Optional"
+                        print(f"  - {data_req['name']}: {req_status}")
+
+        except Exception as e:
+            print(f"Error loading configuration from {config_file}: {e}")
+            print("Using default configuration.")
+
     def setup_working_dir(self) -> Path:
         """Set up a new working directory for each calculation."""
-        if self.config.work_dir:
+        if self.config['work_dir']:
             # If a specific working directory is provided, create a unique subdirectory
-            base_dir = Path(self.config.work_dir)
+            base_dir = Path(self.config['work_dir'])
             # Create a timestamp-based unique directory name
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -104,7 +165,7 @@ class OrcaCalculator:
             # Use a new temporary directory for each calculation
             self._working_dir = Path(tempfile.mkdtemp())
 
-        if self.config.verbose:
+        if self.config['verbose']:
             print(f"Working directory: {self._working_dir}")
 
         return self._working_dir
@@ -129,7 +190,7 @@ class OrcaCalculator:
         Returns:
             CompletedProcess object from subprocess.run
         """
-        if self.config.verbose:
+        if self.config['verbose']:
             # In verbose mode, show the output
             if capture_output:
                 # Capture output but also print it
@@ -153,31 +214,52 @@ class OrcaCalculator:
                     return subprocess.run(args, stdout=devnull, stderr=devnull, check=check)
 
     def generate_input(self,
-                       xc: str = "B3LYP",
-                       basis: str = "6-31G*",
-                       nroot: int = 3,
-                       charge: int = 0,
-                       multiplicity: int = 1,
+                       xc: Optional[str] = None,
+                       basis: Optional[str] = None,
+                       nroot: Optional[int] = None,
+                       charge: Optional[int] = None,
+                       multiplicity: Optional[int] = None,
                        geometry: str = "",
-                       extra_keywords: str = "",
+                       extra_keywords: Optional[str] = None,
                        freq: bool = False,
                        numfreq: bool = False,
                        tddft: bool = False,
                        opt: bool = False,
                        core: bool = False,
-                       core_orb: int = 0,
+                       core_orb: Optional[int] = None,
                        dovcd: bool = False,
                        solvent: Optional[str] = None,
                        memory: Optional[int] = None,
                        nprocs: Optional[int] = None,
-                       efei: bool = False,
+                       efei: Optional[bool] = None,
                        efei_strength: Optional[float] = None,
                        efei_atoms: Optional[Tuple[int, int]] = None,
                        nmr_specific: bool = False,
                        xyz_file: Optional[Union[str, Path]] = None) -> str:
         """
         Generate ORCA input with comprehensive options.
+        Uses default values from configuration if parameters are not provided.
         """
+        # Get default parameters from config
+        defaults = self.config['default_parameters']
+
+        # Use provided parameters or defaults
+        xc = xc if xc is not None else defaults['xc']
+        basis = basis if basis is not None else defaults['basis']
+        nroot = nroot if nroot is not None else defaults['nroot']
+        charge = charge if charge is not None else defaults['charge']
+        multiplicity = multiplicity if multiplicity is not None else defaults['multiplicity']
+        extra_keywords_val = extra_keywords if extra_keywords is not None else defaults[
+            'extra_keywords']
+        core_orb_val = core_orb if core_orb is not None else defaults['core_orb']
+        solvent_val = solvent if solvent is not None else defaults['solvent']
+        memory_val = memory if memory is not None else defaults['memory']
+        nprocs_val = nprocs if nprocs is not None else defaults['nprocs']
+        efei_val = efei if efei is not None else defaults['efei']
+        efei_strength_val = efei_strength if efei_strength is not None else defaults[
+            'efei_strength']
+        efei_atoms_val = efei_atoms if efei_atoms is not None else defaults['efei_atoms']
+
         # Build main keywords
         keywords = [xc, f"{basis}"]
 
@@ -187,8 +269,8 @@ class OrcaCalculator:
             keywords.append("FREQ")
         if numfreq:
             keywords.append("NUMFREQ")
-        if extra_keywords:
-            keywords.append(extra_keywords)
+        if extra_keywords_val:
+            keywords.append(extra_keywords_val)
 
         # Build input blocks
         blocks = []
@@ -197,7 +279,8 @@ class OrcaCalculator:
         if tddft:
             blocks.append(f"%tddft\n  nroots {nroot}")
             if core:
-                blocks.append(f"orbwin[0] = {core_orb},{core_orb},-1,-1 \n")
+                blocks.append(
+                    f"orbwin[0] = {core_orb_val},{core_orb_val},-1,-1 \n")
             blocks.append(f"end")
 
         # Raman block:
@@ -208,26 +291,26 @@ class OrcaCalculator:
         if dovcd:
             blocks.append(f"%FREQ\n  DOVCD true \nend")
 
-        # Resource allocation
-        resource_block = []
-        if memory or nprocs:
-            resource_block.append("%pal")
-            if nprocs:
-                resource_block.append(f"  nprocs {nprocs}")
-            if memory:
-                resource_block.append(f"  memoryPerCore {memory}")
-            resource_block.append("end")
-            blocks.append("\n".join(resource_block))
+        # Resource allocation(This block is not enabled until the parallelization)
+        # resource_block = []
+        # if memory_val:
+        #    resource_block.append(f"  %maxcore {memory_val}")
+        # if nprocs_val:
+        #    resource_block.append("%pal")
+        #    if nprocs_val:
+        #        resource_block.append(f"  nprocs {nprocs_val}")
+        #    resource_block.append("end")
+        #    blocks.append("\n".join(resource_block))
 
         # Solvent model
-        if solvent:
+        if solvent_val:
             blocks.append(
-                f"%cpcm\n  smd true\n  smdsolvent \"{solvent}\"\nend")
+                f"%cpcm\n  smd true\n  smdsolvent \"{solvent_val}\"\nend")
 
         # EFEI calculation
-        if efei and efei_strength is not None and efei_atoms is not None:
+        if efei_val and efei_strength_val is not None and efei_atoms_val is not None:
             blocks.append(
-                f"%geom\n   POTENTIALS\n     {{C {efei_atoms[0]} {efei_atoms[1]} {efei_strength}}} \n  end \nend")
+                f"%geom\n   POTENTIALS\n     {{C {efei_atoms_val[0]} {efei_atoms_val[1]} {efei_strength_val}}} \n  end \nend")
 
         # Combine everything
         input_str = f"!{' '.join(keywords)}\n"
@@ -251,7 +334,7 @@ class OrcaCalculator:
         if nmr_specific:
             input_str += f"%eprnmr\n  Nuclei = all H {{SHIFT}}\n  Nuclei = all C {{SHIFT}} \nend"
 
-        if self.config.verbose:
+        if self.config['verbose']:
             print("Generated ORCA input:")
             print(input_str)
 
@@ -259,13 +342,23 @@ class OrcaCalculator:
 
     def generate_input_for_spectroscopy(self,
                                         spec_type: SpectroscopyType,
-                                        input_params: OrcaInput) -> str:
+                                        input_params: Optional[Dict] = None) -> str:
         """Generate input file specific to spectroscopy type"""
+        # Get default parameters from config
+        defaults = self.config['default_parameters']
+
+        # Use provided parameters or defaults
+        params = {}
+        if input_params:
+            params = {**defaults, **input_params}
+        else:
+            params = defaults.copy()
+
         # Set defaults
         freq = False
         numfreq = False
         opt = False
-        extra = input_params.extra_keywords
+        extra = params.get('extra_keywords', '')
         tddft = False
         nmr_specific = False
         core = False
@@ -304,55 +397,55 @@ class OrcaCalculator:
 
         # Generate the input
         input_str = self.generate_input(
-            xc=input_params.xc,
-            basis=input_params.basis,
-            nroot=input_params.nroot,
-            charge=input_params.charge,
-            multiplicity=input_params.multiplicity,
-            geometry=input_params.geometry,
+            xc=params.get('xc'),
+            basis=params.get('basis'),
+            nroot=params.get('nroot'),
+            charge=params.get('charge'),
+            multiplicity=params.get('multiplicity'),
+            geometry=params.get('geometry', ''),
             extra_keywords=extra,
             freq=freq,
             numfreq=numfreq,
             tddft=tddft,
             core=core,
-            core_orb=input_params.core_orb,
+            core_orb=params.get('core_orb'),
             opt=opt,
             dovcd=dovcd,
-            solvent=input_params.solvent,
-            memory=input_params.memory,
-            nprocs=input_params.nprocs,
-            efei=input_params.efei,
-            efei_strength=input_params.efei_strength,
-            efei_atoms=input_params.efei_atoms,
+            solvent=params.get('solvent'),
+            memory=params.get('memory'),
+            nprocs=params.get('nprocs'),
+            efei=params.get('efei'),
+            efei_strength=params.get('efei_strength'),
+            efei_atoms=params.get('efei_atoms'),
             nmr_specific=nmr_specific
         )
 
         return input_str
 
     def run_calculation(self,
-                        input_content: Union[str, OrcaInput],
+                        input_content: Union[str, Dict],
                         spec_type: Optional[SpectroscopyType] = None) -> Tuple[Path, Path]:
         """Run ORCA calculation with input content."""
-        if isinstance(input_content, OrcaInput):
+        if isinstance(input_content, dict):
             if spec_type:
                 input_content = self.generate_input_for_spectroscopy(
                     spec_type, input_content)
             else:
                 input_content = self.generate_input(
-                    xc=input_content.xc,
-                    basis=input_content.basis,
-                    nroot=input_content.nroot,
-                    charge=input_content.charge,
-                    multiplicity=input_content.multiplicity,
-                    geometry=input_content.geometry,
-                    extra_keywords=input_content.extra_keywords,
-                    solvent=input_content.solvent,
-                    core_orb=input_content.core_orb,
-                    memory=input_content.memory,
-                    nprocs=input_content.nprocs,
-                    efei=input_content.efei,
-                    efei_strength=input_content.efei_strength,
-                    efei_atoms=input_content.efei_atoms
+                    xc=input_content.get('xc'),
+                    basis=input_content.get('basis'),
+                    nroot=input_content.get('nroot'),
+                    charge=input_content.get('charge'),
+                    multiplicity=input_content.get('multiplicity'),
+                    geometry=input_content.get('geometry', ''),
+                    extra_keywords=input_content.get('extra_keywords'),
+                    solvent=input_content.get('solvent'),
+                    core_orb=input_content.get('core_orb'),
+                    memory=input_content.get('memory'),
+                    nprocs=input_content.get('nprocs'),
+                    efei=input_content.get('efei'),
+                    efei_strength=input_content.get('efei_strength'),
+                    efei_atoms=input_content.get('efei_atoms')
                 )
 
         if not self._working_dir:
@@ -365,7 +458,7 @@ class OrcaCalculator:
         with open(inp_file, "w") as f:
             f.write(input_content)
 
-        if self.config.verbose:
+        if self.config['verbose']:
             print(f"Running ORCA calculation in {work_dir}")
             print(f"Using ORCA executable: {self.orca_exec}")
 
@@ -383,7 +476,7 @@ class OrcaCalculator:
                     check=True
                 )
 
-            if self.config.verbose:
+            if self.config['verbose']:
                 print(f"ORCA calculation completed successfully")
 
         except subprocess.CalledProcessError as e:
@@ -449,7 +542,7 @@ class OrcaCalculator:
             str(nmrspec_file)
         ]
 
-        if self.config.verbose:
+        if self.config['verbose']:
             print(
                 f"Running NMR spectrum generation with: {' '.join(nmrspec_cmd)} > {nmrspec_output}")
 
@@ -680,7 +773,7 @@ class OrcaCalculator:
                 f"-w{conv_width}"
             ])
 
-        if self.config.verbose:
+        if self.config['verbose']:
             print(f"Running spectrum generation with: {' '.join(mapspc_args)}")
 
         self.run_subprocess(mapspc_args, check=True)
@@ -864,7 +957,7 @@ class OrcaCalculator:
         plt.show()
 
     # Add helper function to visualize XYZ files
-
+    @staticmethod
     def visualize_xyz_file(xyz_file, style="stick", surface=None, spin=False, calculator=None):
         """
         Convenience function to visualize an XYZ file without running calculations.
@@ -887,21 +980,20 @@ class OrcaCalculator:
     def run_spectroscopy(self,
                          geometry: str,
                          spec_type: str,
-                         xc: str = "B3LYP",
-                         basis: str = "6-31G*",
-                         nroot: int = 3,
-                         charge: int = 0,
-                         multiplicity: int = 1,
-                         extra_keywords: str = "",
-                         solvent: Optional[str] = None,
-                         core_orb: int = 0,
-                         efei: bool = False,
-                         efei_strength: Optional[float] = None,
-                         efei_atoms: Optional[Tuple[int, int]] = None,
+                         params: Optional[Dict] = None,
                          **kwargs) -> Dict[str, np.ndarray]:
         """
         Run a complete spectroscopy workflow: prepare input, run calculation, and generate spectrum.
         Uses a new working directory for each run.
+
+        Args:
+            geometry: Molecular geometry string
+            spec_type: Spectroscopy type (UV, IR, NMR, etc.)
+            params: Dictionary of parameters to override defaults
+            **kwargs: Additional parameters passed to generate_spectrum
+
+        Returns:
+            Dict with spectrum data
         """
         # Ensure we start with a new working directory
         self.setup_working_dir()
@@ -920,25 +1012,19 @@ class OrcaCalculator:
         # Convert string to SpectroscopyType
         spec_type_enum = _convert_string_to_spec_type(spec_type)
 
-        # Prepare input parameters
-        input_params = OrcaInput(
-            xc=xc,
-            basis=basis,
-            nroot=nroot,
-            charge=charge,
-            multiplicity=multiplicity,
-            geometry=geometry,
-            extra_keywords=extra_keywords,
-            solvent=solvent,
-            core_orb=core_orb,
-            efei=efei,
-            efei_strength=efei_strength,
-            efei_atoms=efei_atoms
-        )
+        # Prepare input parameters by combining defaults from config, custom params, and geometry
+        merged_params = {}
+        if params:
+            merged_params = {**self.config['default_parameters'], **params}
+        else:
+            merged_params = self.config['default_parameters'].copy()
+
+        # Add geometry to parameters
+        merged_params['geometry'] = geometry
 
         # Run calculation
         _, out_file = self.run_calculation(
-            input_params, spec_type=spec_type_enum)
+            merged_params, spec_type=spec_type_enum)
 
         # Special handling for VCD spectra
         if spec_type_enum == SpectroscopyType.VCD:
@@ -963,10 +1049,10 @@ class OrcaCalculator:
                 # Visualize the optimized structure if py3Dmol is available
                 try:
                     self.visualize_molecule(xyz_file=xyz_file)
-                    if self.config.verbose:
+                    if self.config['verbose']:
                         print(f"Visualized optimized geometry from {xyz_file}")
                 except Exception as e:
-                    if self.config.verbose:
+                    if self.config['verbose']:
                         print(f"Failed to visualize optimized geometry: {e}")
 
         return spectrum_data
@@ -997,7 +1083,7 @@ class OrcaCalculator:
         with open(output_path, "w") as f:
             f.write(xyz_content)
 
-        if self.config.verbose:
+        if self.config['verbose']:
             print(f"Saved geometry to XYZ file: {output_path}")
 
         return output_path
@@ -1227,51 +1313,32 @@ class OrcaCalculator:
         # Show plot
         plt.show()
 
-        return None  # Return the figure for further customization if needed
-
     def run_vcd_analysis(self,
                          geometry: str,
-                         xc: str = "B3LYP",
-                         basis: str = "6-31G*",
-                         charge: int = 0,
-                         multiplicity: int = 1,
-                         extra_keywords: str = "",
-                         solvent: Optional[str] = None,
-                         memory: Optional[int] = None,
-                         nprocs: Optional[int] = None) -> Dict[str, np.ndarray]:
+                         params: Optional[Dict] = None) -> Dict[str, np.ndarray]:
         """
         Run a complete VCD workflow: prepare input, run calculation, and extract VCD data.
 
         Args:
             geometry: Molecular geometry in XYZ format
-            xc: Exchange-correlation functional
-            basis: Basis set
-            charge: Molecular charge
-            multiplicity: Spin multiplicity
-            extra_keywords: Additional ORCA keywords
-            solvent: Solvent name for CPCM model
-            memory: Memory per core in MB
-            nprocs: Number of processors
+            params: Dictionary of parameters to override defaults
 
         Returns:
             Dict[str, np.ndarray]: VCD spectrum data
         """
-        # Prepare input parameters for VCD
-        input_params = OrcaInput(
-            xc=xc,
-            basis=basis,
-            charge=charge,
-            multiplicity=multiplicity,
-            geometry=geometry,
-            extra_keywords=extra_keywords,
-            solvent=solvent,
-            memory=memory,
-            nprocs=nprocs
-        )
+        # Prepare input parameters by combining defaults from config, custom params, and geometry
+        merged_params = {}
+        if params:
+            merged_params = {**self.config['default_parameters'], **params}
+        else:
+            merged_params = self.config['default_parameters'].copy()
+
+        # Add geometry to parameters
+        merged_params['geometry'] = geometry
 
         # Run calculation with VCD settings
         _, out_file = self.run_calculation(
-            input_params, spec_type=SpectroscopyType.VCD)
+            merged_params, spec_type=SpectroscopyType.VCD)
 
         # Extract VCD data directly from output
         vcd_data = self.extract_vcd_data(out_file)
@@ -1285,14 +1352,7 @@ class OrcaCalculator:
                              geometry: str,
                              efei_atoms: Tuple[int, int],
                              efei_strength: float,
-                             xc: str = "B3LYP",
-                             basis: str = "6-31G*",
-                             charge: int = 0,
-                             multiplicity: int = 1,
-                             extra_keywords: str = "",
-                             solvent: Optional[str] = None,
-                             memory: Optional[int] = None,
-                             nprocs: Optional[int] = None) -> Dict:
+                             params: Optional[Dict] = None) -> Dict:
         """
         Run an EFEI (Electric Field Effect) geometry optimization calculation.
 
@@ -1300,14 +1360,7 @@ class OrcaCalculator:
             geometry: Molecular geometry in XYZ format
             efei_atoms: Tuple of atom indices for EFEI field direction (start, end)
             efei_strength: Field strength for EFEI calculation (in a.u.)
-            xc: Exchange-correlation functional
-            basis: Basis set
-            charge: Molecular charge
-            multiplicity: Spin multiplicity
-            extra_keywords: Additional ORCA keywords
-            solvent: Solvent name for CPCM model
-            memory: Memory per core in MB
-            nprocs: Number of processors
+            params: Dictionary of parameters to override defaults
 
         Returns:
             Dict: Information about the calculation including paths to input/output files
@@ -1333,24 +1386,25 @@ class OrcaCalculator:
         except Exception as e:
             print(f"Failed to visualize initial geometry: {e}")
 
-        # Prepare input parameters with EFEI specific settings for geometry optimization
-        input_params = OrcaInput(
-            xc=xc,
-            basis=basis,
-            charge=charge,
-            multiplicity=multiplicity,
-            geometry=geometry,
-            extra_keywords=f"OPT {extra_keywords}".strip(),  # Add OPT keyword
-            solvent=solvent,
-            memory=memory,
-            nprocs=nprocs,
-            efei=True,
-            efei_strength=efei_strength,
-            efei_atoms=efei_atoms
-        )
+        # Prepare input parameters by combining defaults from config, custom params, and EFEI parameters
+        merged_params = {}
+        if params:
+            merged_params = {**self.config['default_parameters'], **params}
+        else:
+            merged_params = self.config['default_parameters'].copy()
+
+        # Add EFEI specific settings
+        merged_params.update({
+            'geometry': geometry,
+            # Add OPT keyword
+            'extra_keywords': f"OPT {merged_params.get('extra_keywords', '')}".strip(),
+            'efei': True,
+            'efei_strength': efei_strength,
+            'efei_atoms': efei_atoms
+        })
 
         # Run the calculation (no spectroscopy type)
-        inp_file, out_file = self.run_calculation(input_params)
+        inp_file, out_file = self.run_calculation(merged_params)
 
         # Look for optimized geometry
         xyz_file = Path(self._working_dir) / "orca.xyz"
@@ -1375,8 +1429,59 @@ class OrcaCalculator:
             except Exception as e:
                 print(f"Failed to visualize optimized geometry: {e}")
         else:
-            if self.config.verbose:
+            if self.config['verbose']:
                 print("No optimized geometry found. Check output file for errors.")
             result['success'] = False
 
         return result
+
+    @classmethod
+    def from_yaml(cls, config_file: str) -> 'OrcaCalculator':
+        """
+        Create an OrcaCalculator instance from a YAML configuration file.
+
+        Args:
+            config_file: Path to YAML configuration file
+
+        Returns:
+            OrcaCalculator instance
+        """
+        return cls(config_file=config_file)
+
+    def save_config(self, filename: str) -> None:
+        """
+        Save the current configuration to a YAML file using the structured format.
+
+        Args:
+            filename: Path where the YAML file will be saved
+        """
+        try:
+            # Restructure the config dict to the required format
+            structured_config = {
+                'system': {
+                    'orca_path': self.config['orca_path'],
+                    'work_dir': self.config['work_dir'],
+                    'verbose': self.config['verbose']
+                },
+                'parameters': [],
+                'requirements': [],
+                'data_requirements': [
+                    {'name': 'geometry.xyz',
+                        'description': 'Molecular geometry file', 'is_required': True}
+                ]
+            }
+
+            # Convert parameters from dictionary to list of dictionaries
+            for name, value in self.config['default_parameters'].items():
+                param = {
+                    'name': name,
+                    'value': value,
+                    'is_required': name in ['xc', 'basis', 'charge', 'multiplicity']
+                }
+                structured_config['parameters'].append(param)
+
+            with open(filename, 'w') as f:
+                yaml.dump(structured_config, f, default_flow_style=False)
+            print(f"Configuration saved to {filename}")
+        except Exception as e:
+            print(f"Error saving configuration to {filename}: {e}")
