@@ -1,0 +1,44 @@
+Reading the GBW file acetamide_nmr.gbw              ... ... done.
+Reading the input file acetamide.nmrspec           ... ... done.
+--------------------------------------------------------------------------- 
+NMR Spectrum simulated based on computed shieldings and coupling constants  
+--------------------------------------------------------------------------- 
+
+ NMR Shielding File: acetamide_nmr.property.txt 
+ NMR Couplings File: acetamide_sscc.property.txt 
+ Simulated spectrometer frequency :      80.00 MHz 
+ Corresponding spectrometer fieldstrength :       1.88 Tesla 
+ User-defined shielding reference value for nuclei of type 1 :    32.350000 ppm 
+ Lines coalesce below   1.0000 Hz difference 
+ Printlevel : 0  NAtoms 12 
+
+Atom 5, diagonalizing spin Hamiltonian of size 16 ... ... done.
+Atom 6, diagonalizing spin Hamiltonian of size 4 ... ... done.
+Atom 7, diagonalizing spin Hamiltonian of size 4 ... ... done.
+Atom 8, diagonalizing spin Hamiltonian of size 4 ... ... done.
+Atom 9, diagonalizing spin Hamiltonian of size 2 ... ... done.
+Atom 10, diagonalizing spin Hamiltonian of size 2 ... ... done.
+Atom 11, diagonalizing spin Hamiltonian of size 2 ... ... done.
+
+----------------------------------------------------- 
+ NMR Peaks for atom type 1, ref value  32.3500 ppm : 
+----------------------------------------------------- 
+Atom   shift[ppm]   rel.intensity  
+   5        4.15    1.00 
+   5        4.11    3.00 
+   5        4.06    3.00 
+   5        4.02    1.00 
+   6        2.90    9.00 
+   6        2.86    9.00 
+   9        1.71    9.00 
+
+----------------------------------------------------- 
+ NMR Peaks for atom type 8, ref value 1000000.0000 ppm : 
+----------------------------------------------------- 
+Atom   shift[ppm]   rel.intensity  
+
+----------------------------------------------------- 
+Total time                               ...      0.003 sec (=   0.000 min)
+Time in spin Hamiltonian diagonalization ...      0.000 sec (=   0.000 min)
+------------------------------------------------------------------------------
+
